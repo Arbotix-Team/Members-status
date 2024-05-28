@@ -1,0 +1,21 @@
+{
+    "name": "members-status-bot",
+    "version": "1.0.0",
+    "description": "members status bot made by hjgaming / arbotix development",
+    "main": "index.js",
+    "scripts": {
+        "start": "node ."
+    },
+    "keywords": ["discord","discordbot","statusbot","livestatusbot"],
+    "author": "HJGAMING",
+    "license": "ISC",
+    "dependencies": {
+        "@discordjs/rest": "^2.3.0",
+        "anticrash": "^1.1.0",
+        "discord.js": "^13.17.1",
+        "dotenv": "^16.4.5",
+        "mongodb": "^6.6.0",
+        "mongoose": "^8.3.3",
+        "sqlite3": "^5.1.7"
+    }
+}
