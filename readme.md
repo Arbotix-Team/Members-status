@@ -1,6 +1,6 @@
 # Members-Status-Bot
 
-## > this bot have only one command "/setstatuschannel" .
+## > bot commands "/setstatuschannel","/ping","/invite","/help","/botinfo" .
 ## > this bot display members online,offline,idle,dnd also activity status in channel .
 ## > this bot made by hjgaming / arbotix development .
 ## > if you use this code then give credit to hjgaming and arbotix development .
