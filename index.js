@@ -3,6 +3,7 @@ const { Client, Intents, MessageEmbed } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 const fs = require('fs');
+const antiCrash = require('anticrash');
 
 const client = new Client({
     intents: [
@@ -10,6 +11,10 @@ const client = new Client({
         Intents.FLAGS.GUILD_MEMBERS,
         Intents.FLAGS.GUILD_PRESENCES
     ]
+});
+
+const noCrash = new antiCrash(client, {
+    enableAntiCrash: 'true'
 });
 
 const TOKEN = process.env.TOKEN;
