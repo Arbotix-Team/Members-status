@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, Intents, MessageEmbed } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
+const fs = require('fs');
 
 const client = new Client({
     intents: [
@@ -17,26 +18,92 @@ let memberStatuses = new Map(); // Map to store member statuses for each guild
 let statusMessages = new Map(); // Map to store status messages for each guild
 let currentPages = new Map(); // Map to store current page for each guild
 
+const STATUS_FILE = 'status_channels.json';
+
+// Load status channels and messages from file
+function loadStatusData() {
+    if (fs.existsSync(STATUS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8'));
+        statusChannels = new Map(data.statusChannels);
+        statusMessages = new Map(data.statusMessages);
+        currentPages = new Map(data.currentPages);
+    }
+}
+
+// Save status channels and messages to file
+function saveStatusData() {
+    const data = {
+        statusChannels: Array.from(statusChannels.entries()),
+        statusMessages: Array.from(statusMessages.entries()),
+        currentPages: Array.from(currentPages.entries())
+    };
+    fs.writeFileSync(STATUS_FILE, JSON.stringify(data, null, 2));
+}
+
 client.once('ready', async () => {
     console.log('Bot is online!');
+    loadStatusData();
     await registerCommands();
+    // Schedule periodic updates
+    setInterval(updateAllStatusMessages, 5 * 60 * 1000); // Update every 5 minutes
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
-    const { commandName, guild, channel } = interaction;
+    const { commandName, guild, channel, member } = interaction;
 
     if (commandName === 'setstatuschannel') {
+        if (!member.permissions.has('ADMINISTRATOR')) {
+            await interaction.reply('You do not have permission to use this command.');
+            return;
+        }
+
         if (guild) {
             statusChannels.set(guild.id, channel.id);
             console.log(`Status channel set for guild ${guild.id}: ${channel.id}`);
             await initializeStatusMessage(guild.id, channel.id);
+            saveStatusData();
             await interaction.reply(`Status channel set to <#${channel.id}> for guild ${guild.id}.`);
             await updateStatusMessage(guild.id);
         } else {
             await interaction.reply('This command can only be used in a server.');
         }
+    } else if (commandName === 'help') {
+        const helpEmbed = new MessageEmbed()
+            .setTitle('Help')
+            .setDescription('Here are the available commands:')
+            .addFields(
+                { name: '/setstatuschannel', value: 'Set the channel for member status updates (Admin only).' },
+                { name: '/ping', value: 'Check the bot\'s latency.' },
+                { name: '/invite', value: 'Get the bot\'s invite link.' },
+                { name: '/botinfo', value: 'Get information about the bot.' }
+            )
+            .setColor('#0099ff');
+
+        await interaction.reply({ embeds: [helpEmbed] });
+    } else if (commandName === 'ping') {
+        const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
+        await interaction.editReply(`Pong! Latency is ${sent.createdTimestamp - interaction.createdTimestamp}ms.`);
+    } else if (commandName === 'invite') {
+        const inviteEmbed = new MessageEmbed()
+            .setTitle('Invite')
+            .setDescription('Use the link below to invite the bot to your server:')
+            .setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot&permissions=8`)
+            .setColor('#0099ff');
+
+        await interaction.reply({ embeds: [inviteEmbed] });
+    } else if (commandName === 'botinfo') {
+        const botInfoEmbed = new MessageEmbed()
+            .setTitle('Bot Information')
+            .setColor('#0099ff')
+            .addFields(
+                { name: 'Uptime', value: `${Math.floor(client.uptime / 1000 / 60 / 60)} hours, ${Math.floor(client.uptime / 1000 / 60) % 60} minutes`, inline: true },
+                { name: 'Servers', value: `${client.guilds.cache.size}`, inline: true },
+                { name: 'Users', value: `${client.users.cache.size}`, inline: true }
+            );
+
+        await interaction.reply({ embeds: [botInfoEmbed] });
     }
 });
 
@@ -56,8 +123,6 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     }
 });
 
-
-
 client.on('guildMemberRemove', async member => {
     if (member.user.bot) return;
 
@@ -73,6 +138,22 @@ async function registerCommands() {
         {
             name: 'setstatuschannel',
             description: 'Set the channel for member status updates'
+        },
+        {
+            name: 'help',
+            description: 'Get a list of available commands'
+        },
+        {
+            name: 'ping',
+            description: 'Check the bot\'s latency'
+        },
+        {
+            name: 'invite',
+            description: 'Get the bot\'s invite link'
+        },
+        {
+            name: 'botinfo',
+            description: 'Get information about the bot'
         }
     ];
 
@@ -106,16 +187,32 @@ async function initializeStatusMessage(guildId, channelId) {
 
     // Create new status message
     const statusMessage = await channel.send('Initializing member status updates...');
-    statusMessages.set(guildId, statusMessage);
+    statusMessages.set(guildId, statusMessage.id);
     currentPages.set(guildId, 1);
+    saveStatusData();
 }
 
 async function updateStatusMessage(guildId) {
-    const statusMessage = statusMessages.get(guildId);
-    if (!statusMessage) return;
+    const channelId = statusChannels.get(guildId);
+    const messageId = statusMessages.get(guildId);
 
-    const embedData = await generateEmbed(guildId);
-    await statusMessage.edit({ embeds: [embedData] });
+    if (!channelId || !messageId) return;
+
+    try {
+        const channel = await client.channels.fetch(channelId);
+        const statusMessage = await channel.messages.fetch(messageId);
+
+        const embedData = await generateEmbed(guildId);
+        await statusMessage.edit({ embeds: [embedData] });
+    } catch (error) {
+        console.error(`Failed to update status message for guild ${guildId}:`, error);
+    }
+}
+
+async function updateAllStatusMessages() {
+    for (const guildId of statusChannels.keys()) {
+        await updateStatusMessage(guildId);
+    }
 }
 
 function updateMemberStatus(guildId, member) {
@@ -151,7 +248,6 @@ function updateMemberStatus(guildId, member) {
     memberStatuses.set(guildId, guildMemberStatuses);
 }
 
-
 async function generateEmbed(guildId) {
     const embed = new MessageEmbed()
         .setTitle('Member List')
@@ -182,6 +278,5 @@ async function generateEmbed(guildId) {
 
     return embed;
 }
-
 
 client.login(TOKEN);
